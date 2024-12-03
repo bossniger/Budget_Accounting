@@ -1,0 +1,102 @@
+<!-- templates/category_list.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Категории</title>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const categoryTable = document.getElementById("category-table-body");
+            const categoryForm = document.getElementById("category-form");
+
+            // Получение CSRF токена из cookie
+            const getCSRFToken = () => {
+                let cookieValue = null;
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.startsWith('csrftoken=')) {
+                        cookieValue = cookie.substring('csrftoken='.length, cookie.length);
+                        break;
+                    }
+                }
+                return cookieValue;
+            };
+
+            // Fetch API для получения категорий
+            const fetchCategories = async () => {
+                const response = await fetch('/api/v1/categories/');
+                if (response.ok) {
+                    const categories = await response.json();
+                    categoryTable.innerHTML = "";
+                    categories.forEach(category => {
+                        const row = `<tr>
+                            <td>${category.name}</td>
+                            <td>${category.description || ""}</td>
+                        </tr>`;
+                        categoryTable.innerHTML += row;
+                    });
+                } else {
+                    alert("Ошибка загрузки категорий");
+                }
+            };
+
+            // Fetch API для добавления новой категории
+            categoryForm.addEventListener("submit", async (event) => {
+                event.preventDefault();
+                const formData = new FormData(categoryForm);
+                const data = {
+                    name: formData.get("name"),
+                    description: formData.get("description"),
+                };
+
+                const response = await fetch('/api/v1/categories/', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCSRFToken(), // Добавляем CSRF токен
+                    },
+                    body: JSON.stringify(data),
+                });
+
+                if (response.ok) {
+                    await fetchCategories(); // Обновляем список категорий
+                    categoryForm.reset();
+                } else {
+                    alert("Ошибка при добавлении категории");
+                }
+            });
+
+            // Инициализация
+            fetchCategories();
+        });
+    </script>
+</head>
+<body>
+    <h1>Все категории</h1>
+    <table>
+        <thead>
+            <tr>
+                <th>Название</th>
+                <th>Описание</th>
+            </tr>
+        </thead>
+        <tbody id="category-table-body">
+            <!-- Категории загружаются через JavaScript -->
+        </tbody>
+    </table>
+
+    <h2>Добавить новую категорию</h2>
+    <form id="category-form">
+        {% csrf_token %}
+        <label for="name">Название:</label>
+        <input type="text" id="name" name="name" required><br><br>
+
+        <label for="description">Описание:</label>
+        <textarea id="description" name="description"></textarea><br><br>
+
+        <button type="submit">Добавить</button>
+    </form>
+</body>
+</html>

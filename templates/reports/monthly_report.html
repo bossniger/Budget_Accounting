@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+
+{% block content %}
+    <h1>Отчет за месяц</h1>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Доход</th>
+                <th>Расход</th>
+                <th>Баланс</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>{{ report.income }}</td>
+                <td>{{ report.expense }}</td>
+                <td>{{ report.balance }}</td>
+            </tr>
+        </tbody>
+    </table>
+{% endblock %}

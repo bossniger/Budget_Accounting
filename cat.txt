@@ -1,0 +1,12 @@
+categories = [
+    {"name": "Продукты", "description": "Еда, напитки, магазины"},
+    {"name": "Транспорт", "description": "Общественный транспорт, такси, бензин"},
+    {"name": "Развлечения", "description": "Кино, театр, концерты"},
+    {"name": "Жилье", "description": "Аренда, коммунальные услуги"},
+    {"name": "Зарплата", "description": "Основной источник дохода"},
+    {"name": "Фриланс", "description": "Доходы от проектов на стороне"},
+]
+
+# Создание объектов
+for category in categories:
+    Category.objects.create(**category)

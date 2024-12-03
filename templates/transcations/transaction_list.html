@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+
+{% block content %}
+    <h1>Список транзакций</h1>
+    <a href="{% url 'transaction_create' %}" class="btn btn-primary mb-3">Добавить транзакцию</a>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Дата</th>
+                <th>Тип</th>
+                <th>Сумма</th>
+                <th>Категория</th>
+                <th>Описание</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for transaction in transactions %}
+                <tr>
+                    <td>{{ transaction.date }}</td>
+                    <td>{{ transaction.get_type_display }}</td>
+                    <td>{{ transaction.amount }}</td>
+                    <td>{{ transaction.category.name if transaction.category else 'Не указано' }}</td>
+                    <td>{{ transaction.description }}</td>
+                    <td><a href="{% url 'transaction_detail' transaction.id %}" class="btn btn-info">Подробнее</a></td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+{% endblock %}
