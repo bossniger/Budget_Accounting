@@ -66,11 +66,16 @@ class TransferSerializer(serializers.ModelSerializer):
         Дополнительные проверки:
         - Нельзя переводить на тот же счет.
         - Сумма перевода должна быть больше нуля.
+        - Проверка, что счет отправителя принадлежит текущему пользователю.
         """
+        user = self.context['request'].user
+
         if data['sender_account'] == data['receiver_account']:
             raise serializers.ValidationError("Нельзя перевести средства между одинаковыми счетами.")
         if data['amount'] <= 0:
             raise serializers.ValidationError("Сумма перевода должна быть больше нуля.")
         if data['sender_account'].balance < data['amount']:
             raise serializers.ValidationError("Недостаточно средств на счете отправителя.")
+        if data['sender_account'].user!=user:
+            raise serializers.ValidationError("Вы можете переводить средства только со своего счета")
         return data

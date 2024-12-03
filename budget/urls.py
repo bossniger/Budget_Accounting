@@ -16,6 +16,7 @@ urlpatterns = [
     path('v1/', include(router.urls)),
     path('v1/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('v1/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api-auth/', include('rest_framework.urls')),
     path('transfer/', TransferView.as_view(), name='transfer'),
     # Маршруты для HTML-страниц
     path('', include(frontend_urls)),

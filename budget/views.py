@@ -1,5 +1,7 @@
 from django.shortcuts import render
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import viewsets, status
+from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -13,6 +15,11 @@ class TransactionViewSet(viewsets.ModelViewSet):
     serializer_class = TransactionSerializer
     #permission_classes = [IsAuthenticated]
 
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
+    filterset_fields = ['type', 'account', 'category']
+    search_fields = ['description', 'category__name', 'tags__name']
+    ordering_fields = ['date', 'amount']
+
     def get_queryset(self):
         user = self.request.user
         return Transaction.objects.filter(user=user)
@@ -21,7 +28,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
-    #permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
 
 class TagViewSet(viewsets.ModelViewSet):
