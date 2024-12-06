@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Аналитика</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <h1>Анализ расходов и доходов</h1>
+
+    <!-- Форма для выбора периода -->
+    <form id="analyticsForm">
+        <label for="startDate">Начальная дата:</label>
+        <input type="date" id="startDate" name="start_date" required>
+        <label for="endDate">Конечная дата:</label>
+        <input type="date" id="endDate" name="end_date" required>
+        <button type="submit">Показать данные</button>
+    </form>
+
+    <!-- Холст для графика -->
+    <canvas id="analyticsChart" width="400" height="200"></canvas>
+
+    <script>
+        // URL API
+        const apiUrl = "/api/analytics/analytics/";
+
+        // Инициализируем переменную для графика
+        let analyticsChart = null;
+
+        // Обновление или создание графика
+        function updateChart(data) {
+            if (!data || !data.categories || data.categories.length === 0) {
+                alert("Нет данных для выбранного периода.");
+                return;
+            }
+
+            // Форматирование данных
+            const formattedCategories = data.categories.map(category => ({
+                name: category.category__name || "Без категории",
+                income: category.total_income,
+                expense: category.total_expense
+            }));
+
+            const labels = formattedCategories.map(item => item.name);
+            const incomes = formattedCategories.map(item => item.income);
+            const expenses = formattedCategories.map(item => item.expense);
+
+            const ctx = document.getElementById('analyticsChart').getContext('2d');
+            if (analyticsChart) {
+                // Обновляем данные существующего графика
+                analyticsChart.data.labels = labels;
+                analyticsChart.data.datasets[0].data = incomes;
+                analyticsChart.data.datasets[1].data = expenses;
+                analyticsChart.update();
+            } else {
+                // Создаём новый график
+                analyticsChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Доходы',
+                                data: incomes,
+                                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                                borderColor: 'rgba(75, 192, 192, 1)',
+                                borderWidth: 1
+                            },
+                            {
+                                label: 'Расходы',
+                                data: expenses,
+                                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                                borderColor: 'rgba(255, 99, 132, 1)',
+                                borderWidth: 1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // Обработчик формы
+        document.getElementById('analyticsForm').addEventListener('submit', function (event) {
+            event.preventDefault();
+
+            // Получаем значения дат
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+
+            if (!startDate || !endDate) {
+                alert("Пожалуйста, выберите обе даты.");
+                return;
+            }
+
+            // Отправляем запрос к API
+            fetch(`${apiUrl}?start_date=${startDate}&end_date=${endDate}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! Status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log("Данные из API:", data); // Для отладки
+                    updateChart(data); // Обновляем график с полученными данными
+                })
+                .catch(error => {
+                    console.error("Ошибка загрузки данных:", error);
+                    alert("Не удалось загрузить данные для графика. Проверьте настройки API.");
+                });
+        });
+    </script>
+</body>
+</html>
