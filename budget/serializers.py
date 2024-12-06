@@ -67,6 +67,7 @@ class TransferSerializer(serializers.ModelSerializer):
         - Нельзя переводить на тот же счет.
         - Сумма перевода должна быть больше нуля.
         """
+
         if data['sender_account'] == data['receiver_account']:
             raise serializers.ValidationError("Нельзя перевести средства между одинаковыми счетами.")
         if data['amount'] <= 0:
