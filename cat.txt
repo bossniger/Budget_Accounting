@@ -10,3 +10,11 @@ categories = [
 # Создание объектов
 for category in categories:
     Category.objects.create(**category)
+
+
+
+raw пост запрос
+{
+  "username": "your_username",
+  "password": "your_password"
+}
