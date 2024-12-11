@@ -5,6 +5,8 @@ from django.db.models import Sum, Case, When, DecimalField
 from django.http import HttpResponse
 from django.utils.timezone import localtime
 from django.views.generic import TemplateView
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -16,11 +18,40 @@ from rest_framework.response import Response
 from rest_framework import status
 from datetime import datetime
 
+from analytics.docs.analytics_docs import ANALYTICS_RESPONSE_EXAMPLE
 from budget.models import Transaction
 
 
 class AnalyticsView(APIView):
     permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        operation_description="Получение аналитики по доходам и расходам за указанный период.",
+        manual_parameters=[
+            openapi.Parameter(
+                "start_date",
+                openapi.IN_QUERY,
+                description="Дата начала периода (формат YYYY-MM-DD)",
+                type=openapi.TYPE_STRING,
+                required=True,
+            ),
+            openapi.Parameter(
+                "end_date",
+                openapi.IN_QUERY,
+                description="Дата окончания периода (формат YYYY-MM-DD)",
+                type=openapi.TYPE_STRING,
+                required=True,
+            ),
+        ],
+        responses={
+            200: openapi.Response(
+                description="Успешный ответ с аналитическими данными",
+                examples={"application/json": ANALYTICS_RESPONSE_EXAMPLE},
+            ),
+            400: "Неверный формат данных или отсутствуют обязательные параметры",
+            401: "Пользователь не аутентифицирован",
+        },
+    )
 
     def get(self, request):
         if not request.user.is_authenticated:

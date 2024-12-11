@@ -24,3 +24,10 @@ class CategoryAdmin(admin.ModelAdmin):
 @admin.register(Transfer)
 class TransferAdmin(admin.ModelAdmin):
     pass
+
+
+@admin.register(Budget)
+class BudgetAdmin(admin.ModelAdmin):
+    list_display = ('user', 'category', 'amount', 'start_date', 'end_date')
+    list_filter = ('user', 'category')
+    search_fields = ('category__name', 'user__username')

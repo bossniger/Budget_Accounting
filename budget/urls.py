@@ -10,6 +10,7 @@ router.register(r'transactions', TransactionViewSet)
 router.register(r'categories', CategoryViewSet)
 router.register(r'tags', TagViewSet)
 router.register(r'users', UserViewSet)
+router.register(r'budgets', BudgetViewSet, basename='budget')
 
 urlpatterns = [
     # API маршруты

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Transaction, Category, Tag, Account, Transfer
+from .models import Transaction, Category, Tag, Account, Transfer, Budget
 from django.contrib.auth.models import User
 
 
@@ -75,3 +75,9 @@ class TransferSerializer(serializers.ModelSerializer):
         if data['sender_account'].balance < data['amount']:
             raise serializers.ValidationError("Недостаточно средств на счете отправителя.")
         return data
+
+
+class BudgetSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Budget
+        fields = '__all__'
