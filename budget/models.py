@@ -10,21 +10,26 @@ class Category(models.Model):
         return self.name
 
 
+class Currency(models.Model):
+    code = models.CharField(max_length=3, unique=True)  # Например USD, BYN...
+    name = models.CharField(max_length=50)  # Полное название валюты
+    rate_to_base = models.DecimalField(max_digits=10, decimal_places=4)  # Курс относительно базовой
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'{self.name} ({self.code})'
+
+
 class Account(models.Model):
     ACCOUNT_TYPE_CHOICES = [
         ('cash', 'Наличные'),
         ('card', 'Банковская карта'),
         ('e_wallet', 'Электронный кошелек'),
     ]
-    CURRENCY_CHOICES = [
-        ('BYN', 'BYN'),
-        ('USD', 'USD'),
-        ('EUR', 'EUR'),
-    ]
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     name = models.CharField(max_length=100)
     account_type = models.CharField(max_length=10, choices=ACCOUNT_TYPE_CHOICES)
-    currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES)
+    currency = models.ForeignKey(Currency, on_delete=models.PROTECT)
     balance = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -55,10 +60,11 @@ class Transaction(models.Model):
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True)
     tags = models.ManyToManyField('Tag', blank=True)
     account = models.ForeignKey(Account, related_name='transactions', on_delete=models.SET_NULL, null=True, blank=True)
+    currency = models.ForeignKey(Currency, related_name='transactions', on_delete=models.SET_NULL, null=True, blank=True)
 
     def __str__(self):
         category_name = self.category.name if self.category else "Без категории"
-        return f'{self.account.name} - {category_name} - {self.amount} - {self.date}'
+        return f'{self.account.name} - {category_name} - {self.amount}{self.currency} - {self.date}'
 
     def save(self, *args, **kwargs):
         if not self.pk: # Если транзакция новая

@@ -16,12 +16,13 @@ from .docs.transaction_docs import TRANSACTION_FILTER_PARAMS, TRANSACTION_LIST_R
 from .filters import TransactionFilter
 from .models import Transaction, Category, Tag, Budget
 from .serializers import *
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 
 
 class TransactionViewSet(viewsets.ModelViewSet):
     queryset = Transaction.objects.all()
     serializer_class = TransactionSerializer
+    permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_class = TransactionFilter
     ordering_fields = ['date', 'amount']  # Поля для сортировки
@@ -31,7 +32,6 @@ class TransactionViewSet(viewsets.ModelViewSet):
         manual_parameters=TRANSACTION_FILTER_PARAMS,
         responses={200: TRANSACTION_LIST_RESPONSE}
     )
-    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
@@ -209,3 +209,9 @@ class BudgetViewSet(viewsets.ModelViewSet):
         Удаление бюджета.
         """
         return super().destroy(request, *args, **kwargs)
+
+
+class CurrencyViewSet(viewsets.ModelViewSet):
+    queryset = Currency.objects.all()
+    serializer_class = CurrencySerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
