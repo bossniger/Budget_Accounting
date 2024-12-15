@@ -35,7 +35,7 @@ class Account(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f'{self.name} - {self.user.username}'
+        return f'{self.name} - {self.user.username} - {self.balance} {self.currency.code}'
 
     def update_balance(self, amount: float):
         # Обновление остатка на счете
@@ -64,7 +64,7 @@ class Transaction(models.Model):
 
     def __str__(self):
         category_name = self.category.name if self.category else "Без категории"
-        return f'{self.account.name} - {category_name} - {self.amount}{self.currency} - {self.date}'
+        return f'{self.account.name} - {category_name} - {self.amount} {self.currency.code} - {self.date}'
 
     def save(self, *args, **kwargs):
         if not self.pk: # Если транзакция новая
