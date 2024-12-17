@@ -31,3 +31,8 @@ class BudgetAdmin(admin.ModelAdmin):
     list_display = ('user', 'category', 'amount', 'start_date', 'end_date')
     list_filter = ('user', 'category')
     search_fields = ('category__name', 'user__username')
+
+
+@admin.register(Currency)
+class CurrencyAdmin(admin.ModelAdmin):
+    pass

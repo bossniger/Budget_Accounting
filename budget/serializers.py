@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Transaction, Category, Tag, Account, Transfer, Budget
+from .models import Transaction, Category, Tag, Account, Transfer, Budget, Currency
 from django.contrib.auth.models import User
 
 
@@ -15,13 +15,48 @@ class TagSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class CurrencySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Currency
+        fields = ['code', 'name', 'rate_to_base']
+        read_only_fields = ['updated_at']
+
+def convert_currency(amount, from_currency, to_currency):
+    if from_currency == to_currency:
+        return amount
+    if from_currency.rate_to_base == 0:
+        raise ValueError(f'Курс для {from_currency.code} не установлен')
+    # конвертируем в базовую, а затем в целевую валюту
+    base_amount = amount / from_currency.rate_to_base
+    return base_amount * to_currency.rate_to_base
+
+
 class TransactionSerializer(serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
     tags = TagSerializer(many=True, read_only=True)
+    currency = CurrencySerializer(read_only=True)
 
     class Meta:
         model = Transaction
-        fields = ['id', 'user', 'type', 'amount', 'date', 'description', 'category', 'tags']
+        fields = ['id','user', 'amount', 'currency', 'category', 'type', 'description', 'date', 'account']
+
+        def create(self, validated_data):
+            account = validated_data['account']
+            transaction_currency = validated_data.get('currency', account.currency)
+            # Конвертируем если валюта не совпадает
+            if transaction_currency != account.currency:
+                validated_data['amount'] = convert_currency(
+                    amount=validated_data['amount'],
+                    from_currency=transaction_currency,
+                    to_currency=account.currency
+                )
+            # обновляем баланс счета
+            if validated_data['type'] == 'income':
+                account.balance += validated_data['amount']
+            elif validated_data['type'] == 'expense':
+                account.balance -= validated_data['amount']
+            account.save()
+            return super().create(validated_data)
 
 
 class UserSerializer(serializers.ModelSerializer):

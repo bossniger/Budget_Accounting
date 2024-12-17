@@ -1,12 +1,8 @@
 from datetime import datetime
-
 import django
-from Tools.demo.mcast import sender
 from django.db.models import Sum, Case, When, DecimalField
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from django.shortcuts import render
-from django.views.generic import TemplateView
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework.filters import OrderingFilter
@@ -14,21 +10,19 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
-from django.db.models import Sum, Case, When, DecimalField
-
 from .docs.budget_docs import BUDGET_LIST_RESPONSE, BUDGET_CREATE_EXAMPLE, BUDGET_CREATE_RESPONSE
 from .docs.category_docs import CATEGORY_FILTER_PARAMS, CATEGORY_LIST_RESPONSE, CATEGORY_CREATE_RESPONSE
 from .docs.transaction_docs import TRANSACTION_FILTER_PARAMS, TRANSACTION_LIST_RESPONSE
 from .filters import TransactionFilter
 from .models import Transaction, Category, Tag, Budget
 from .serializers import *
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 
 
 class TransactionViewSet(viewsets.ModelViewSet):
     queryset = Transaction.objects.all()
     serializer_class = TransactionSerializer
+    permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_class = TransactionFilter
     ordering_fields = ['date', 'amount']  # Поля для сортировки
@@ -38,7 +32,6 @@ class TransactionViewSet(viewsets.ModelViewSet):
         manual_parameters=TRANSACTION_FILTER_PARAMS,
         responses={200: TRANSACTION_LIST_RESPONSE}
     )
-    #permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
@@ -111,13 +104,13 @@ class CategoryViewSet(viewsets.ModelViewSet):
 class TagViewSet(viewsets.ModelViewSet):
     queryset = Tag.objects.all()
     serializer_class = TagSerializer
-    #permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
 
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    #permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
 
 class TransferView(APIView):
@@ -216,3 +209,9 @@ class BudgetViewSet(viewsets.ModelViewSet):
         Удаление бюджета.
         """
         return super().destroy(request, *args, **kwargs)
+
+
+class CurrencyViewSet(viewsets.ModelViewSet):
+    queryset = Currency.objects.all()
+    serializer_class = CurrencySerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]

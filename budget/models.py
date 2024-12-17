@@ -1,3 +1,4 @@
+from decimal import Decimal
 from django.db import models
 from django.contrib.auth.models import User
 
@@ -10,27 +11,32 @@ class Category(models.Model):
         return self.name
 
 
+class Currency(models.Model):
+    code = models.CharField(max_length=3, unique=True)  # Например USD, BYN...
+    name = models.CharField(max_length=50)  # Полное название валюты
+    rate_to_base = models.DecimalField(max_digits=10, decimal_places=4)  # Курс относительно базовой
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f'{self.name} ({self.code})'
+
+
 class Account(models.Model):
     ACCOUNT_TYPE_CHOICES = [
         ('cash', 'Наличные'),
         ('card', 'Банковская карта'),
         ('e_wallet', 'Электронный кошелек'),
     ]
-    CURRENCY_CHOICES = [
-        ('BYN', 'BYN'),
-        ('USD', 'USD'),
-        ('EUR', 'EUR'),
-    ]
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     name = models.CharField(max_length=100)
     account_type = models.CharField(max_length=10, choices=ACCOUNT_TYPE_CHOICES)
-    currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES)
+    currency = models.ForeignKey(Currency, on_delete=models.PROTECT)
     balance = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f'{self.name} - {self.user.username}'
+        return f'{self.name} - {self.user.username} - {self.balance} {self.currency.code}'
 
     def update_balance(self, amount: float):
         # Обновление остатка на счете
@@ -55,20 +61,33 @@ class Transaction(models.Model):
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True, blank=True)
     tags = models.ManyToManyField('Tag', blank=True)
     account = models.ForeignKey(Account, related_name='transactions', on_delete=models.SET_NULL, null=True, blank=True)
+    currency = models.ForeignKey(Currency, related_name='transactions', on_delete=models.SET_NULL, null=True, blank=True)
 
     def __str__(self):
         category_name = self.category.name if self.category else "Без категории"
-        return f'{self.account.name} - {category_name} - {self.amount} - {self.date}'
+        return f'{self.account.name} - {category_name} - {self.amount} {self.currency.code} - {self.date}'
 
     def save(self, *args, **kwargs):
-        if not self.pk: # Если транзакция новая
-            if self.account: # Обновляем баланс только если указан счет
+        if not self.pk:  # Если транзакция новая
+            if self.account:  # Обновляем баланс только если указан счет
+                # Получаем конвертированную сумму, если валюты разные
+                converted_amount = self.converted_amount
+
+                # Обновляем баланс в зависимости от типа транзакции
                 if self.type == 'expense':
-                    self.account.update_balance(-self.amount)
+                    self.account.update_balance(-converted_amount)  # Изменяем на сумму расхода
                 elif self.type == 'income':
-                    self.account.update_balance(self.amount)
+                    self.account.update_balance(converted_amount)  # Изменяем на сумму дохода
+
         super().save(*args, **kwargs)
 
+    @property
+    def converted_amount(self):
+        """ Возвращает сумму, конвертированную в валюту счета. """
+        if self.account.currency != self.currency:
+            conversion_rate = self.currency.rate_to_base / self.account.currency.rate_to_base
+            return self.amount * Decimal(conversion_rate)
+        return self.amount  # Если валюта транзакции совпадает с валютой счета
 
 
 class Tag(models.Model):
