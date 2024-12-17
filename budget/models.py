@@ -1,6 +1,7 @@
 from decimal import Decimal
 from django.db import models
 from django.contrib.auth.models import User
+from django.db.models import Sum
 
 
 class Category(models.Model):
@@ -135,3 +136,16 @@ class Budget(models.Model):
 
     def __str__(self):
         return f'{self.category.name} - {self.amount}'
+
+    def get_total_expenses(self):
+        # общая сумма расходов по данной категории
+        return Transaction.objects.filter(
+            user=self.user,
+            category=self.category,
+            type='expense',
+            date__range=(self.start_date, self.end_date)
+        ).aggregate(total=Sum('amount'))['total'] or 0
+
+    def is_exceeded(self):
+        # Проверяем, не привышен ли бюджет.
+        return self.get_total_expenses() > self.amount

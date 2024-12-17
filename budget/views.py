@@ -1,10 +1,12 @@
 from datetime import datetime
 import django
+from Tools.scripts.make_ctype import method
 from django.db.models import Sum, Case, When, DecimalField
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
+from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import viewsets, status
@@ -150,6 +152,38 @@ class BudgetViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return Budget.objects.filter(user=self.request.user)
+
+    @action(detail=True, methods=['get'])
+    def check_budget_status(self, request, pk=None):
+        # проверяем не превышен ли бюджет и возвращаем подробную информацию
+        budget = self.get_object()
+        total_expenses = budget.get_total_expenses()
+        is_exceeded = budget.is_exceeded()
+        data = {
+            'budget_id': budget.id,
+            'category': budget.category.name,
+            'budget_amount': budget.amount,
+            'total_expenses': total_expenses,
+            'is_exceeded': is_exceeded
+        }
+        return Response(data)
+
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        # Вся инфа о бюджетах категорий пользователя
+        budgets = self.get_queryset()
+        data = []
+        for budget in budgets:
+            total_expenses = budget.get_total_expenses()
+            is_exceeded = budget.is_exceeded()
+            data.append({
+                'budget_id': budget.id,
+                'category': budget.category.name,
+                'budget_amount': budget.amount,
+                'total_expenses': total_expenses,
+                'is_exceeded': is_exceeded,
+            })
+        return Response(data)
 
     @swagger_auto_schema(
         operation_description="Получение списка бюджетов текущего пользователя",

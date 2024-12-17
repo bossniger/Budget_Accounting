@@ -1,4 +1,6 @@
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
+
 from .models import Transaction, Category, Tag, Account, Transfer, Budget, Currency
 from django.contrib.auth.models import User
 
@@ -116,3 +118,16 @@ class BudgetSerializer(serializers.ModelSerializer):
     class Meta:
         model = Budget
         fields = '__all__'
+
+    def validate(self, data):
+        user = self.context['request'].user
+        overlapping_budgets = Budget.objects.filter(
+            user=user,
+            category=data['category'],
+            start_date__lte=data['end_date'],
+            end_date__gte=data['start_date']
+        ).exclude(pk=self.instance.pk if self.instance else None)
+
+        if overlapping_budgets.exists():
+            raise ValidationError("Бюджет на этот период для данной категории уже существует.")
+        return data
