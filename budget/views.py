@@ -1,20 +1,19 @@
 from datetime import datetime
 import django
-from Tools.scripts.make_ctype import method
 from django.db.models import Sum, Case, When, DecimalField
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
 from rest_framework.decorators import action
-from rest_framework.filters import OrderingFilter
+from rest_framework.filters import OrderingFilter, SearchFilter
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from .docs.budget_docs import BUDGET_LIST_RESPONSE, BUDGET_CREATE_EXAMPLE, BUDGET_CREATE_RESPONSE
 from .docs.category_docs import CATEGORY_FILTER_PARAMS, CATEGORY_LIST_RESPONSE, CATEGORY_CREATE_RESPONSE
-from .docs.transaction_docs import TRANSACTION_FILTER_PARAMS, TRANSACTION_LIST_RESPONSE
+from .docs.transaction_docs import TRANSACTION_LIST_RESPONSES, TRANSACTION_LIST_PARAMETERS
 from .filters import TransactionFilter
 from .models import Transaction, Category, Tag, Budget
 from .serializers import *
@@ -25,14 +24,15 @@ class TransactionViewSet(viewsets.ModelViewSet):
     queryset = Transaction.objects.all()
     serializer_class = TransactionSerializer
     permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = TransactionFilter
+    search_fields = ['description', 'category__name', 'tags__name']
     ordering_fields = ['date', 'amount']  # Поля для сортировки
     ordering = ['-date']
     @swagger_auto_schema(
-        operation_description='Получение списка транзакций с фильтрацие и сортировкой',
-        manual_parameters=TRANSACTION_FILTER_PARAMS,
-        responses={200: TRANSACTION_LIST_RESPONSE}
+        operation_description='Получение списка транзакций с фильтрацией и сортировкой',
+        manual_parameters=TRANSACTION_LIST_PARAMETERS,
+        responses={200: TRANSACTION_LIST_RESPONSES}
     )
 
     def get_queryset(self):

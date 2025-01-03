@@ -40,7 +40,7 @@ class TransactionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Transaction
-        fields = ['id','user', 'amount', 'currency', 'category', 'type', 'description', 'date', 'account']
+        fields = ['id','user', 'amount', 'currency', 'category', 'type', 'description', 'date', 'account', 'tags']
 
         def create(self, validated_data):
             account = validated_data['account']

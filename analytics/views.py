@@ -100,7 +100,9 @@ class AnalyticsView(APIView):
 
         # Итоговые суммы
         total_income = transactions.filter(type='income').aggregate(total=Sum('amount'))['total'] or 0
+        print(f"Total income calculated: {total_income}")
         total_expense = transactions.filter(type='expense').aggregate(total=Sum('amount'))['total'] or 0
+        print(f"Total expense calculated: {total_expense}")
 
         return Response({
             "period": {"start_date": start_date, "end_date": end_date},
