@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Аналитика расходов и доходов</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <h1>Динамика доходов и расходов</h1>
+
+    <!-- Форма для выбора периода -->
+    <form id="dateFilterForm">
+        <label for="start_date">Начальная дата:</label>
+        <input type="date" id="start_date" name="start_date" required>
+        <label for="end_date">Конечная дата:</label>
+        <input type="date" id="end_date" name="end_date" required>
+        <button type="submit">Построить график</button>
+    </form>
+
+    <!-- Контейнер для графика -->
+    <canvas id="incomeExpenseChart" width="800" height="400"></canvas>
+
+    <script>
+        const fetchAndRenderChart = async (start_date, end_date) => {
+            try {
+                const response = await fetch(`/api/analytics/trend/?start_date=${start_date}&end_date=${end_date}&group_by=day`);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    alert(data.error || "Ошибка при загрузке данных");
+                    return;
+                }
+
+                // Обработка данных для Chart.js
+                const labels = data.trend.map(item => item.date);
+                const incomeData = data.trend.map(item => item.total_income);
+                const expenseData = data.trend.map(item => item.total_expense);
+
+                // Удаляем предыдущий график, если он существует
+                if (window.myChart) {
+                    window.myChart.destroy();
+                }
+
+                // Настройка графика
+                const ctx = document.getElementById('incomeExpenseChart').getContext('2d');
+                window.myChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'Доходы',
+                                data: incomeData,
+                                borderColor: 'green',
+                                backgroundColor: 'rgba(0, 255, 0, 0.2)',
+                                fill: true,
+                            },
+                            {
+                                label: 'Расходы',
+                                data: expenseData,
+                                borderColor: 'red',
+                                backgroundColor: 'rgba(255, 0, 0, 0.2)',
+                                fill: true,
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { position: 'top' },
+                            tooltip: { mode: 'index', intersect: false }
+                        },
+                        scales: {
+                            x: { title: { display: true, text: 'Дата' } },
+                            y: { title: { display: true, text: 'Сумма' }, beginAtZero: true }
+                        }
+                    }
+                });
+            } catch (error) {
+                alert("Произошла ошибка: " + error.message);
+            }
+        };
+
+        // Обработчик формы
+        document.getElementById('dateFilterForm').addEventListener('submit', (event) => {
+            event.preventDefault();
+            const start_date = document.getElementById('start_date').value;
+            const end_date = document.getElementById('end_date').value;
+
+            if (!start_date || !end_date) {
+                alert("Пожалуйста, выберите даты");
+                return;
+            }
+
+            // Загружаем и отображаем данные
+            fetchAndRenderChart(start_date, end_date);
+        });
+
+        // Загрузка графика с начальными данными (например, текущий месяц)
+        const today = new Date();
+        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+        const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+
+        document.getElementById('start_date').value = firstDay;
+        document.getElementById('end_date').value = lastDay;
+
+        fetchAndRenderChart(firstDay, lastDay);
+    </script>
+</body>
+</html>

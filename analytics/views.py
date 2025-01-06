@@ -1,8 +1,10 @@
 import csv
 from io import BytesIO
 
-from django.db.models import Sum, Case, When, DecimalField
+from django.db.models import Sum, Case, When, DecimalField, F
+from django.db.models.functions import TruncDay, TruncWeek, TruncMonth
 from django.http import HttpResponse
+from django.shortcuts import render
 from django.utils.timezone import localtime
 from django.views.generic import TemplateView
 from drf_yasg import openapi
@@ -19,6 +21,8 @@ from rest_framework import status
 from datetime import datetime
 
 from analytics.docs.analytics_docs import ANALYTICS_RESPONSE_EXAMPLE
+from analytics.docs.income_expense_trend_docs import INCOME_EXPENSE_TREND_DOCS
+from analytics.docs.top_expenses_cat_docs import TOP_EXPENSE_CATEGORIES_DOCS
 from budget.models import Transaction
 
 
@@ -113,7 +117,7 @@ class AnalyticsView(APIView):
 
 
 class AnalyticsPageView(TemplateView):
-    template_name = 'reports/user_manual_report.html'
+    template_name = 'analytics/user_manual_report.html'
 
 
 class ExportCSVView(APIView):
@@ -188,3 +192,91 @@ class ExportPDFView(APIView):
         response = HttpResponse(buffer, content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="analytics_{start_date}_to_{end_date}.pdf"'
         return response
+
+
+class TopExpenseCategoriesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(**TOP_EXPENSE_CATEGORIES_DOCS)
+    def get(self, request):
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        limit = int(request.query_params.get('limit', 5))  # Количество категорий в топе, по умолчанию 5
+
+        if not start_date or not end_date:
+            return Response(
+                {"error": "Пожалуйста, укажите start_date и end_date в формате YYYY-MM-DD"},
+                status=400
+            )
+
+        try:
+            transactions = Transaction.objects.filter(
+                user=request.user,
+                type='expense',
+                date__date__gte=start_date,
+                date__date__lte=end_date
+            )
+        except ValueError:
+            return Response({"error": "Неверный формат даты. Используйте YYYY-MM-DD."}, status=400)
+
+        # Группировка и агрегация
+        top_categories = (
+            transactions.values('category__name')
+            .annotate(total_expense=Sum('amount'))
+            .order_by('-total_expense')[:limit]
+        )
+
+        return Response({
+            "period": {"start_date": start_date, "end_date": end_date},
+            "top_categories": list(top_categories)
+        })
+
+
+class IncomeExpenseTrendView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(**INCOME_EXPENSE_TREND_DOCS)
+    def get(self, request):
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        group_by = request.query_params.get('group_by', 'day')
+
+        if not start_date or not end_date:
+            return Response(
+                {'error': 'Пожалуйста, укажите start_date и end_date в формате YYYY-MM-DD'}, status=400,
+            )
+        try:
+            group_by_field = {
+                'day': TruncDay('date'),
+                'week': TruncWeek('date'),
+                'month': TruncMonth('date'),
+            }[group_by]
+        except KeyError:
+            return Response({'error': 'Недопустимое значение group_by. Используйте day, week или month'},
+                            status=4000)
+        transactions = (
+            request.user.transactions.filter(date__date__gte=start_date, date__date__lte=end_date)
+            .annotate(period=group_by_field)
+            .values('period')
+            .annotate(
+                total_income=Sum('amount', filter=F('type') == 'income'),
+                total_expense=Sum('amount', filter=F('type') == 'expense'),
+            )
+            .order_by('period')
+        )
+        return Response(
+            {
+                "period": {"start_date": start_date, "end_date": end_date},
+                "trend": [
+                    {
+                        "date": item["period"],
+                        "total_income": item["total_income"] or 0,
+                        "total_expense": item["total_expense"] or 0,
+                    }
+                    for item in transactions
+                ],
+            }
+        )
+
+def income_expense_trend_chart(request):
+    return render(request, 'analytics/income_expense_trend.html')
