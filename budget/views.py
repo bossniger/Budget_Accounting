@@ -1,3 +1,4 @@
+from crypt import methods
 from datetime import datetime
 import django
 from django.db.models import Sum, Case, When, DecimalField
@@ -15,7 +16,7 @@ from .docs.budget_docs import BUDGET_LIST_RESPONSE, BUDGET_CREATE_EXAMPLE, BUDGE
 from .docs.category_docs import CATEGORY_FILTER_PARAMS, CATEGORY_LIST_RESPONSE, CATEGORY_CREATE_RESPONSE
 from .docs.transaction_docs import TRANSACTION_LIST_RESPONSES, TRANSACTION_LIST_PARAMETERS
 from .filters import TransactionFilter
-from .models import Transaction, Category, Tag, Budget
+from .models import Transaction, Category, Tag, Budget, Loan
 from .serializers import *
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 
@@ -249,3 +250,68 @@ class CurrencyViewSet(viewsets.ModelViewSet):
     queryset = Currency.objects.all()
     serializer_class = CurrencySerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
+
+
+class LoanViewSet(viewsets.ModelViewSet):
+    queryset = Loan.objects.all()
+    serializer_class = LoanSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Loan.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='make-payment')
+    def make_payment(self, request, pk=None):
+        loan = self.get_object()
+        amount = request.data.get('amount')
+        account_id = request.data.get('account_id')
+
+        if not amount:
+            return Response({'error': 'Укажите сумму погашения'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            amount = float(amount)
+        except ValueError:
+            return Response({'error': 'Сумма должна быть числом'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            account = Account.objects.get(id=account_id, user=request.user)
+        except Account.DoesNotExist:
+            return Response({'error': 'Счет не найден или недоступен'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            loan.make_payment(amount=amount, payment_account=account)
+            return Response({'message': f'Погашение успешно. Остаток: {loan.remaining_amount}'})
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'], url_path='settle')
+    def settle(self, request, pk=None):
+        loan = self.get_object()
+        account_id = request.data.get('account_id')
+
+        try:
+            account = Account.objects.get(id=account_id, user=request.user)
+        except Account.DoesNotExist:
+            return Response({'error': 'Счет не найден или недоступен'}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            loan.settle(payment_account=account)
+            return Response({'message': 'Кредит полностью погашен.'})
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class CounterpartyViewSet(viewsets.ModelViewSet):
+    queryset = Counterparty.objects.all()
+    serializer_class = CounterpartySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Counterparty.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)

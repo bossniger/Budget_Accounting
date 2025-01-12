@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
-from .models import Transaction, Category, Tag, Account, Transfer, Budget, Currency
+from .models import Transaction, Category, Tag, Account, Transfer, Budget, Currency, Counterparty, Loan
 from django.contrib.auth.models import User
 
 
@@ -131,3 +131,21 @@ class BudgetSerializer(serializers.ModelSerializer):
         if overlapping_budgets.exists():
             raise ValidationError("Бюджет на этот период для данной категории уже существует.")
         return data
+
+
+class CounterpartySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Counterparty
+        fields = '__all__'
+
+
+class LoanSerializer(serializers.ModelSerializer):
+    counterparty = CounterpartySerializer(read_only=True)
+    currency = CurrencySerializer(read_only=True)
+    class Meta:
+        model = Loan
+        fields = [
+            'id', 'loan_type', 'principal_amount', 'interest_rate',
+            'currency', 'account', 'date_issued', 'due_date',
+            'description', 'is_settled', 'remaining_amount', 'counterparty'
+        ]
