@@ -1,4 +1,3 @@
-from crypt import methods
 from datetime import datetime
 import django
 from django.db.models import Sum, Case, When, DecimalField
@@ -14,6 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from .docs.budget_docs import BUDGET_LIST_RESPONSE, BUDGET_CREATE_EXAMPLE, BUDGET_CREATE_RESPONSE
 from .docs.category_docs import CATEGORY_FILTER_PARAMS, CATEGORY_LIST_RESPONSE, CATEGORY_CREATE_RESPONSE
+from .docs.loan_docs import make_payment_request, make_payment_response, settle_request, settle_response
 from .docs.transaction_docs import TRANSACTION_LIST_RESPONSES, TRANSACTION_LIST_PARAMETERS
 from .filters import TransactionFilter
 from .models import Transaction, Category, Tag, Budget, Loan
@@ -114,6 +114,59 @@ class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
+
+
+class AccountViewSet(viewsets.ModelViewSet):
+    queryset = Account.objects.all()
+    serializer_class = AccountSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Account.objects.filter(user=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def deposit(self, request, pk=None):
+        account = self.get_object()
+        amount = request.data.get('amount')
+        try:
+            amount = float(amount)
+            if amount <= 0:
+                return Response(
+                    {'error':'Сумма должна быть положительным числом'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            account.update_balance(amount)
+            return Response(
+                {'message': f'Баланс пополнен на {amount}. Текущий баланс: {account.balance}'},
+                status=status.HTTP_200_OK,
+            )
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'Укажите корректную сумму.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    @action(detail=True, methods=['post'])
+    def withdraw(self, request, pk=None):
+        account = self.get_object()
+        amount = request.data.get('amount')
+        try:
+            amount = float(amount)
+            if amount <= 0:
+                return Response(
+                    {'error': 'Сумма должна быть положительным числм'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if amount > account.balance:
+                return Response(
+                    {'message': f'Со счета снято {amount}. Текущий баланс {account.balance}'},
+                    status=status.HTTP_200_OK,
+                )
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'Укажите корректную сумму.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
 
 class TransferView(APIView):
@@ -263,6 +316,12 @@ class LoanViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
+    @swagger_auto_schema(
+        method='post',
+        operation_description='Внесение платежа для погашения части суммы кредита или займа.',
+        request_body=make_payment_request,
+        responses={200: make_payment_response},
+    )
     @action(detail=True, methods=['post'], url_path='make-payment')
     def make_payment(self, request, pk=None):
         loan = self.get_object()
@@ -288,6 +347,12 @@ class LoanViewSet(viewsets.ModelViewSet):
         except ValueError as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+    @swagger_auto_schema(
+        method='post',
+        operation_description='Полное погашение кредита или займа.',
+        request_body=settle_request,
+        responses={200: settle_response},
+    )
     @action(detail=True, methods=['post'], url_path='settle')
     def settle(self, request, pk=None):
         loan = self.get_object()
