@@ -147,5 +147,9 @@ class LoanSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'loan_type', 'principal_amount', 'interest_rate',
             'currency', 'account', 'date_issued', 'due_date',
-            'description', 'is_settled', 'remaining_amount', 'counterparty'
+            'description', 'is_settled', 'remaining_amount', 'counterparty',
         ]
+
+    def create(self, validated_data):
+        print(f"Validated data: {validated_data}")  # Debug
+        return super().create(validated_data)

@@ -185,6 +185,8 @@ class Loan(models.Model):
     def save(self, *args, **kwargs):
         if not self.pk:
             self.remaining_amount = self.total_due
+        print(f"Saving loan: {self}")  # Debug
+        print(f"Counterparty: {self.counterparty}")  # Debug
         super().save(*args, **kwargs)
 
     @property
