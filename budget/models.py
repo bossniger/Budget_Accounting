@@ -189,15 +189,19 @@ class Loan(models.Model):
 
     @property
     def total_due(self):
-        if not self.due_date or not self.date_issued:
-            return self.principal_amount
+        # Преобразуем в Decimal для точных расчетов
+        principal = Decimal(self.principal_amount)
+        interest_rate = Decimal(self.interest_rate) / Decimal(100)
 
+        # Рассчитываем количество лет между датами
         days_between = (self.due_date - self.date_issued).days
         years_between = Decimal(days_between) / Decimal(365)
-        if self.interest_rate > 0:
-            interest = self.principal_amount * (Decimal(self.interest_rate) / Decimal(100)) * years_between
-            return self.principal_amount + interest
-        return self.principal_amount
+
+        # Рассчитываем проценты
+        interest = principal * interest_rate * years_between
+
+        # Возвращаем сумму долга + проценты
+        return principal + interest
 
     def make_payment(self, amount, payment_account=None):
         if self.is_settled:

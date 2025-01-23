@@ -1,4 +1,6 @@
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
+
 import django
 from django.db.models import Sum, Case, When, DecimalField
 from django.db.models.signals import post_save
@@ -311,10 +313,10 @@ class LoanViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Loan.objects.filter(user=self.request.user)
-
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        """
+        Возвращает только кредиты текущего пользователя.
+        """
+        return Loan.objects.filter(counterparty__user=self.request.user)
 
     @swagger_auto_schema(
         method='post',
@@ -322,30 +324,61 @@ class LoanViewSet(viewsets.ModelViewSet):
         request_body=make_payment_request,
         responses={200: make_payment_response},
     )
-    @action(detail=True, methods=['post'], url_path='make-payment')
+    @action(detail=True, methods=['post'])
     def make_payment(self, request, pk=None):
-        loan = self.get_object()
-        amount = request.data.get('amount')
-        account_id = request.data.get('account_id')
-
-        if not amount:
-            return Response({'error': 'Укажите сумму погашения'}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            amount = float(amount)
-        except ValueError:
-            return Response({'error': 'Сумма должна быть числом'}, status=status.HTTP_400_BAD_REQUEST)
+        """
+        Погашение части или полной суммы кредита.
+        """
+        loan = self.get_object()  # Получаем объект кредита
+        payment_amount = request.data.get('amount')
 
         try:
-            account = Account.objects.get(id=account_id, user=request.user)
-        except Account.DoesNotExist:
-            return Response({'error': 'Счет не найден или недоступен'}, status=status.HTTP_400_BAD_REQUEST)
+            payment_amount = Decimal(payment_amount)
+            if payment_amount <= 0:
+                return Response(
+                    {"error": "Сумма платежа должна быть положительным числом."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except (TypeError, ValueError, InvalidOperation):
+            return Response(
+                {"error": "Укажите корректную сумму платежа."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        try:
-            loan.make_payment(amount=amount, payment_account=account)
-            return Response({'message': f'Погашение успешно. Остаток: {loan.remaining_amount}'})
-        except ValueError as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        # Проверяем, связан ли кредит с текущим пользователем
+        if not loan.account or loan.account.user != request.user:
+            return Response(
+                {"error": "Счет не найден или недоступен."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Проверяем достаточность средств на счете
+        if payment_amount > loan.account.balance:
+            return Response(
+                {"error": "Недостаточно средств на счете."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Погашение кредита
+        remaining_amount = loan.remaining_amount
+        if payment_amount >= remaining_amount:
+            loan.is_settled = True
+            loan.remaining_amount = Decimal(0)
+            loan.account.update_balance(-remaining_amount)
+            loan.save()
+            return Response(
+                {"message": f"Кредит полностью погашен. Списано: {remaining_amount}."},
+                status=status.HTTP_200_OK
+            )
+        else:
+            loan.remaining_amount -= payment_amount
+            loan.account.update_balance(-payment_amount)
+            loan.save()
+            return Response(
+                {
+                    "message": f"Платеж в размере {payment_amount} успешно принят. Остаток долга: {loan.remaining_amount}."},
+                status=status.HTTP_200_OK
+            )
 
     @swagger_auto_schema(
         method='post',
@@ -356,19 +389,36 @@ class LoanViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='settle')
     def settle(self, request, pk=None):
         loan = self.get_object()
-        account_id = request.data.get('account_id')
+        account = loan.account
 
-        try:
-            account = Account.objects.get(id=account_id, user=request.user)
-        except Account.DoesNotExist:
-            return Response({'error': 'Счет не найден или недоступен'}, status=status.HTTP_404_NOT_FOUND)
+        # Проверяем доступ к счету
+        if account.user != request.user:
+            return Response({"error": "Счет не найден или недоступен."}, status=status.HTTP_403_FORBIDDEN)
 
-        try:
-            loan.settle(payment_account=account)
-            return Response({'message': 'Кредит полностью погашен.'})
-        except ValueError as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        # Получаем сумму для погашения
+        amount = request.data.get('amount')
+        if not amount or Decimal(amount) <= 0:
+            return Response({"error": "Некорректная сумма погашения."}, status=status.HTTP_400_BAD_REQUEST)
 
+        amount = Decimal(amount)
+
+        # Проверяем, можно ли погасить эту сумму
+        if amount > loan.remaining_amount:
+            return Response({"error": "Сумма превышает оставшуюся задолженность."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Обновляем оставшуюся сумму и статус кредита
+        loan.remaining_amount -= amount
+        if loan.remaining_amount <= 0:
+            loan.remaining_amount = Decimal('0.00')
+            loan.is_settled = True  # Обновляем статус на "погашено"
+
+        loan.save()
+
+        return Response({
+            "success": "Заем успешно погашен.",
+            "remaining_amount": loan.remaining_amount,
+            "is_settled": loan.is_settled
+        }, status=status.HTTP_200_OK)
 
 class CounterpartyViewSet(viewsets.ModelViewSet):
     queryset = Counterparty.objects.all()
