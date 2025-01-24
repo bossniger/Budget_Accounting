@@ -115,9 +115,19 @@ class TransferSerializer(serializers.ModelSerializer):
 
 
 class BudgetSerializer(serializers.ModelSerializer):
+    total_expenses = serializers.SerializerMethodField()
+    is_exceeded = serializers.SerializerMethodField()
+
     class Meta:
         model = Budget
         fields = '__all__'
+
+    def get_is_exceeded(self, obj):
+        # Проверяем, превышен ли бюджет
+        return obj.is_exceeded()
+
+    def get_total_expenses(self, obj):
+        return str(obj.get_total_expenses())
 
     def validate(self, data):
         user = self.context['request'].user
@@ -140,8 +150,9 @@ class CounterpartySerializer(serializers.ModelSerializer):
 
 
 class LoanSerializer(serializers.ModelSerializer):
-    counterparty = CounterpartySerializer(read_only=True)
-    currency = CurrencySerializer(read_only=True)
+    counterparty = serializers.PrimaryKeyRelatedField(queryset=Counterparty.objects.all())
+    currency = serializers.PrimaryKeyRelatedField(queryset=Currency.objects.all())
+    account = serializers.PrimaryKeyRelatedField(queryset=Account.objects.all())
     class Meta:
         model = Loan
         fields = [
@@ -151,5 +162,10 @@ class LoanSerializer(serializers.ModelSerializer):
         ]
 
     def create(self, validated_data):
-        print(f"Validated data: {validated_data}")  # Debug
+        validated_data['user'] = self.context['request'].user
         return super().create(validated_data)
+
+    def validate(self, data):
+        if data.get('due_date') and data['due_date'] < data['date_issued']:
+            raise serializers.ValidationError("Дата погашения не может быть раньше даты выдачи.")
+        return data

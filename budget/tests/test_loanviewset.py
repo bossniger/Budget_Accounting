@@ -41,6 +41,41 @@ class LoanViewSetTestCase(APITestCase):
             'description': 'Новый кредит',
             'counterparty': self.counterparty.id,
         }
-        response = self.client.post('/api/v1/loans/', data)
+        response = self.client.post('/api/v1/loans/', data, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_list_loans(self):
+        response = self.client.get('/api/v1/loans/', format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsInstance(response.data, list)
         self.assertEqual(len(response.data), 1)
+
+    def test_retrieve_loan(self):
+        response = self.client.get(f'/api/v1/loans/{self.loan.id}/', format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["id"], self.loan.id)
+        self.assertEqual(response.data["principal_amount"], "200.00")
+        self.assertEqual(response.data["remaining_amount"], "200.82")
+
+    def test_update_loan(self):
+        data = {
+            "description": "Обновленное описание"
+        }
+        response = self.client.patch(f'/api/v1/loans/{self.loan.id}/', data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.loan.refresh_from_db()
+        self.assertEqual(self.loan.description, "Обновленное описание")
+
+    def test_make_payment(self):
+        data = {"amount": "50.00"}
+        response = self.client.post(f'/api/v1/loans/{self.loan.id}/make_payment/', data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.loan.refresh_from_db()
+        self.assertEqual(float(self.loan.remaining_amount), 150.82)
+
+    def test_settle_loan(self):
+        response = self.client.post(f'/api/v1/loans/{self.loan.id}/settle/', {'amount': '200.82'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.loan.refresh_from_db()
+        self.assertTrue(self.loan.is_settled)
+        self.assertEqual(float(self.loan.remaining_amount), 0.0)

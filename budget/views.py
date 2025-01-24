@@ -1,5 +1,5 @@
 from datetime import datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 import django
 from django.db.models import Sum, Case, When, DecimalField
@@ -371,7 +371,9 @@ class LoanViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_200_OK
             )
         else:
-            loan.remaining_amount -= payment_amount
+            # Округление остатка
+            loan.remaining_amount = (loan.remaining_amount - payment_amount).quantize(Decimal('0.01'),
+                                                                                      rounding=ROUND_HALF_UP)
             loan.account.update_balance(-payment_amount)
             loan.save()
             return Response(
