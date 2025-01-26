@@ -41,7 +41,7 @@ class Account(models.Model):
 
     def update_balance(self, amount: float):
         # Обновление остатка на счете
-        self.balance += amount
+        self.balance += Decimal(amount)
         self.save()
 
     def get_transactions(self):

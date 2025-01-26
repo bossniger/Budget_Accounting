@@ -121,6 +121,7 @@ class BudgetSerializer(serializers.ModelSerializer):
     class Meta:
         model = Budget
         fields = '__all__'
+        read_only_fields = ['user', 'total_expenses', 'is_exceeded']
 
     def get_is_exceeded(self, obj):
         # Проверяем, превышен ли бюджет
@@ -141,6 +142,11 @@ class BudgetSerializer(serializers.ModelSerializer):
         if overlapping_budgets.exists():
             raise ValidationError("Бюджет на этот период для данной категории уже существует.")
         return data
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+
 
 
 class CounterpartySerializer(serializers.ModelSerializer):

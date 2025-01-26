@@ -5,6 +5,7 @@ from django.db.models import Sum, Case, When, DecimalField, F
 from django.db.models.functions import TruncDay, TruncWeek, TruncMonth
 from django.http import HttpResponse
 from django.shortcuts import render
+from django.utils.dateparse import parse_date
 from django.utils.timezone import localtime
 from django.views.generic import TemplateView
 from drf_yasg import openapi
@@ -13,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import AuthenticationFailed, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -126,6 +127,13 @@ class ExportCSVView(APIView):
     def get(self, request):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
+        try:
+            start_date_parsed = parse_date(start_date)
+            end_date_parsed = parse_date(end_date)
+            if not start_date_parsed or not end_date_parsed:
+                raise ValidationError('Неверный формат даты.')
+        except ValidationError as e:
+            return Response({'detail:': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         transactions = Transaction.objects.filter(
             user=request.user,
             date__range=[start_date, end_date]

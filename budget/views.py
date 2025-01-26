@@ -300,6 +300,9 @@ class BudgetViewSet(viewsets.ModelViewSet):
         """
         return super().destroy(request, *args, **kwargs)
 
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
 
 class CurrencyViewSet(viewsets.ModelViewSet):
     queryset = Currency.objects.all()
