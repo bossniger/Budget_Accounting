@@ -20,7 +20,7 @@ from .docs.transaction_docs import TRANSACTION_LIST_RESPONSES, TRANSACTION_LIST_
 from .filters import TransactionFilter
 from .models import Transaction, Category, Tag, Budget, Loan
 from .serializers import *
-from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
+from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, AllowAny
 
 
 class TransactionViewSet(viewsets.ModelViewSet):
@@ -116,6 +116,16 @@ class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
+
+
+class RegisterView(APIView):
+    permission_classes = [AllowAny]
+    def post(self, request):
+        serializer = RegisterSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({'message': 'Пользователь успешно зарегистрирован'}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class AccountViewSet(viewsets.ModelViewSet):
