@@ -102,10 +102,10 @@ WSGI_APPLICATION = 'Budget_Accounting.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'budget_db',
-        'USER': 'egor',
-        'PASSWORD': 'abc123ABC',
-        'HOST': 'localhost',
+        'NAME': 'budget_accounting',
+        'USER': 'postgres', #egor
+        'PASSWORD': 'postgres', #abc123ABC
+        'HOST': 'db',
         'PORT': '5432',
     }
 }
