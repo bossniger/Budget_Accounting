@@ -1,3 +1,4 @@
+import csv
 from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
@@ -5,12 +6,18 @@ import django
 from django.db.models import Sum, Case, When, DecimalField
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from django.http import HttpResponse
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfgen import canvas
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import viewsets, status
+from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from .docs.budget_docs import BUDGET_LIST_RESPONSE, BUDGET_CREATE_EXAMPLE, BUDGET_CREATE_RESPONSE
@@ -41,6 +48,82 @@ class TransactionViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         return Transaction.objects.filter(user=user)
+
+    @action(detail=False, methods=['get'])
+    def export_csv(self, request):
+        transactions = Transaction.objects.filter(user=request.user)
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = 'attachment; filename="transactions.csv"'
+        # Эта штука фиксит кириллицу
+        response.write('\ufeff'.encode('utf-8'))
+        writer = csv.writer(response)
+        writer.writerow(['Дата', 'Категория', 'Сумма', 'Тип', 'Описание'])
+        for transaction in transactions:
+            writer.writerow([
+                transaction.date,
+                transaction.category.name if transaction.category else '',
+                transaction.amount,
+                transaction.type,
+                transaction.description or ''
+            ])
+        return response
+
+    @action(detail=False, methods=['get'])
+    def export_pdf(self, request):
+        transactions = Transaction.objects.filter(user=request.user)
+        response = HttpResponse(content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename="transactions.pdf"'
+        pdfmetrics.registerFont(TTFont('DejaVuSans', 'static/fonts/DejaVuSans.ttf'))
+        pdf = canvas.Canvas(response, pagesize=letter)
+        pdf.setFont('DejaVuSans', 12)
+        pdf.drawString(100, 750, "Отчет по транзакциям")
+        pdf.drawString(50, 700, "Дата | Категория | Сумма | Тип | Описание")
+        y = 680
+        for transaction in transactions:
+            pdf.drawString(
+                50, y,
+                f"{transaction.date} | {transaction.category.name if transaction.category else ''} | "
+                f"{transaction.amount} | {transaction.type} | {transaction.description or ''}"
+            )
+            y -= 20
+            if y < 50:  # Переход на новую страницу
+                pdf.showPage()
+                pdf.setFont('DejaVuSans', 12)
+                y = 750
+
+        pdf.save()
+        return response
+
+    @action(detail=False, methods=['post'], parser_classes=[MultiPartParser])
+    def import_csv(self, request):
+        file = request.FILES.get('file')
+        if not file.name.endswith('.csv'):
+            return Response({'error': 'Загрузите файл в формате CSV.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            decoded_file = file.read().decode('utf-8')  # Декодируем файл
+            reader = csv.reader(decoded_file.splitlines())
+            next(reader)  # Пропускаем заголовок
+
+            for row in reader:
+                try:
+                    date, category_name, amount, type, description = row
+                    category = Category.objects.get(name=category_name, user=request.user)
+                    Transaction.objects.create(
+                        user=request.user,
+                        date=date,
+                        category=category,
+                        amount=Decimal(amount),
+                        type=type,
+                        description=description
+                    )
+                except Exception as e:
+                    return Response({'error': f'Ошибка в строке: {row}. {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
+            return Response({'message': 'Данные успешно импортированы!'}, status=status.HTTP_201_CREATED)
+        except UnicodeDecodeError:
+            return Response({'error': 'Проверьте, что файл сохранен в кодировке UTF-8.'},
+                            status=status.HTTP_400_BAD_REQUEST)
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
