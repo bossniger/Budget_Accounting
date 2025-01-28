@@ -6,43 +6,110 @@
 ---
 
 ## Требования
-- Python 3.10+
-- Django 4.x
-- PostgreSQL (или SQLite для локального тестирования)
-- Docker (для деплоя)
-- Node.js (если требуется сборка фронтенда)
+- Docker версии 20.10.0 или выше
+- Docker Compose версии 1.27.0 или выше
 
----
-
-## Установка и запуск (локально)
+## Установка и запуск
 
 1. **Клонируйте репозиторий**:
    ```bash
    git clone https://github.com/bossniger/Budget_Accounting.git
-   cd budget-accounting
+   cd Budget_Accounting
+   ```
 
-2. **Создайте виртуальное окружение и активируйте его**:
-    ```bash
-    python -m venv venv
-    source venv/bin/activate  # (Linux/Mac)
-    venv\Scripts\activate     # (Windows)
+2. **Создать `.env` файл:**
 
-3. **Установите зависимости**:
-    ```bash
-    pip install -r requirements.txt
-   
-4. **Примените миграции**:
-    ```bash
-    python manage.py migrate
+   Создайте файл `.env` в корне проекта и укажите в нем переменные окружения:
 
-5. **Создайте суперпользователя**:
+   ```env
+   POSTGRES_USER=postgres
+   POSTGRES_PASSWORD=postgres
+   POSTGRES_DB=budget_accounting
+   SECRET_KEY=django-insecure-1afr5)2%&tum+6u=q1v=ym0yr73&nlmy6l9lb4td3x-ku%!7kv
+   DJANGO_ALLOWED_HOSTS=*
+   DEBUG=False
+   ```
+
+3. **Собрать и запустить контейнеры:**
+
    ```bash
-    python manage.py createsuperuser
+   docker-compose up --build -d
+   ```
+   - `--build`: пересобирает образы Docker.
+   - `-d`: запускает контейнеры в фоновом режиме.
+   - 
+4. **Применить миграции базы данных:**
 
-6. **Запустите сервер**:
+   Выполните миграции для инициализации базы данных:
+
    ```bash
-    python manage.py runserver
-   
-7. **Откройте приложение в браузере**:
-- Админ-панель: http://127.0.0.1:8000/admin/ 
-- Swagger-документация: http://127.0.0.1:8000/swagger/
+   docker-compose exec app python manage.py migrate
+   ```
+
+5. **Собрать статические файлы:**
+
+   Для корректного отображения админки и Swagger интерфейса выполните команду:
+
+   ```bash
+   docker-compose exec app python manage.py collectstatic --noinput
+   ```
+
+6. **Создать суперпользователя:**
+
+   Для доступа к Django Admin создайте суперпользователя:
+
+   ```bash
+   docker-compose exec app python manage.py createsuperuser
+   ```
+
+7. **Доступ к приложению:**
+
+   После успешного деплоя приложение будет доступно по адресу:
+
+   ```
+   http://localhost:8000
+   ```
+
+   Админка: `http://localhost:8000/admin`
+   Swagger: 'http://localhost:8000/swagger'
+
+8. **Логи приложения:**
+
+   Для просмотра логов используйте команду:
+
+   ```bash
+   docker-compose logs -f app
+   ```
+
+9. **Остановка приложения:**
+
+   Чтобы остановить контейнеры, выполните:
+
+   ```bash
+   docker-compose down
+   ```
+   ### Дополнительно
+
+- **Проверка состояния контейнеров:**
+
+   ```bash
+   docker-compose ps
+   ```
+
+- **Перезапуск приложения:**
+
+   ```bash
+   docker-compose restart app
+   ```
+
+- **Удаление томов базы данных:**
+
+   Чтобы полностью удалить данные и контейнеры:
+
+   ```bash
+   docker-compose down -v
+   ```
+
+---
+
+Теперь приложение готово к использованию!

@@ -19,7 +19,6 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: budget_app
-    command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - .:/app
     ports:
@@ -30,7 +29,7 @@ services:
       - DEBUG=True
       - SECRET_KEY=django-insecure-1afr5)2%&tum+6u=q1v=ym0yr73&nlmy6l9lb4td3x-ku%!7kv
       - DATABASE_URL=postgres://postgres:postgres@db:5432/budget_accounting
-      - DJANGO_ALLOWED_HOSTS=*
+      - DJANGO_ALLOWED_HOSTS=0.0.0.0,localhost,127.0.0.1
 
 volumes:
   db_data:
