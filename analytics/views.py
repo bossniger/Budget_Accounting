@@ -22,8 +22,10 @@ from rest_framework import status
 from datetime import datetime
 
 from analytics.docs.analytics_docs import ANALYTICS_RESPONSE_EXAMPLE
+
 from analytics.docs.income_expense_trend_docs import INCOME_EXPENSE_TREND_DOCS
 from analytics.docs.top_expenses_cat_docs import TOP_EXPENSE_CATEGORIES_DOCS
+
 from budget.models import Transaction
 
 
@@ -205,6 +207,7 @@ class ExportPDFView(APIView):
 class TopExpenseCategoriesView(APIView):
     permission_classes = [IsAuthenticated]
 
+
     @swagger_auto_schema(**TOP_EXPENSE_CATEGORIES_DOCS)
     def get(self, request):
         start_date = request.query_params.get('start_date')
@@ -217,6 +220,7 @@ class TopExpenseCategoriesView(APIView):
                 status=400
             )
 
+
         try:
             transactions = Transaction.objects.filter(
                 user=request.user,
@@ -225,14 +229,17 @@ class TopExpenseCategoriesView(APIView):
                 date__date__lte=end_date
             )
         except ValueError:
+
             return Response({"error": "Неверный формат даты. Используйте YYYY-MM-DD."}, status=400)
 
         # Группировка и агрегация
+
         top_categories = (
             transactions.values('category__name')
             .annotate(total_expense=Sum('amount'))
             .order_by('-total_expense')[:limit]
         )
+
 
         return Response({
             "period": {"start_date": start_date, "end_date": end_date},
