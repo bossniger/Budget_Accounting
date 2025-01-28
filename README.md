@@ -13,7 +13,7 @@
 
 1. **Клонируйте репозиторий**:
    ```bash
-   git clone https://github.com/bossniger/Budget_Accounting.git
+   git clone [https://github.com/bossniger/Budget_Accounting.git](https://github.com/eBelyakovich/Budget_Accounting.git)
    cd Budget_Accounting
    ```
 
