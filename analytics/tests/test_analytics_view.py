@@ -91,4 +91,3 @@ class AnalyticsViewTestCase(APITestCase):
         self.client.force_authenticate(user=None)  # Убедиться, что пользователь не аутентифицирован
         response = self.client.get(self.url, {"start_date": "2024-12-01", "end_date": "2024-12-31"})
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-

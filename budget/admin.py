@@ -36,3 +36,12 @@ class BudgetAdmin(admin.ModelAdmin):
 @admin.register(Currency)
 class CurrencyAdmin(admin.ModelAdmin):
     pass
+
+@admin.register(Loan)
+class LoanAdmin(admin.ModelAdmin):
+    pass
+
+
+@admin.register(Counterparty)
+class CounterpartyAdmin(admin.ModelAdmin):
+    pass

@@ -1,0 +1,35 @@
+version: '3.9'
+
+services:
+  db:
+    image: postgres:15
+    container_name: budget_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: budget_accounting
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: budget_app
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    environment:
+      - DEBUG=True
+      - SECRET_KEY=django-insecure-1afr5)2%&tum+6u=q1v=ym0yr73&nlmy6l9lb4td3x-ku%!7kv
+      - DATABASE_URL=postgres://postgres:postgres@db:5432/budget_accounting
+      - DJANGO_ALLOWED_HOSTS=0.0.0.0,localhost,127.0.0.1
+
+volumes:
+  db_data:

@@ -1,8 +1,11 @@
 import csv
 from io import BytesIO
 
-from django.db.models import Sum, Case, When, DecimalField
+from django.db.models import Sum, Case, When, DecimalField, F
+from django.db.models.functions import TruncDay, TruncWeek, TruncMonth
 from django.http import HttpResponse
+from django.shortcuts import render
+from django.utils.dateparse import parse_date
 from django.utils.timezone import localtime
 from django.views.generic import TemplateView
 from drf_yasg import openapi
@@ -11,7 +14,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import AuthenticationFailed, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -19,7 +22,10 @@ from rest_framework import status
 from datetime import datetime
 
 from analytics.docs.analytics_docs import ANALYTICS_RESPONSE_EXAMPLE
-from analytics.docs.top_expense_cat import TOP_EXPENSE_CATEGORIES_PARAMS, TOP_EXPENSE_CATEGORIES_RESPONSES
+
+from analytics.docs.income_expense_trend_docs import INCOME_EXPENSE_TREND_DOCS
+from analytics.docs.top_expenses_cat_docs import TOP_EXPENSE_CATEGORIES_DOCS
+
 from budget.models import Transaction
 
 
@@ -114,7 +120,7 @@ class AnalyticsView(APIView):
 
 
 class AnalyticsPageView(TemplateView):
-    template_name = 'reports/user_manual_report.html'
+    template_name = 'analytics/user_manual_report.html'
 
 
 class ExportCSVView(APIView):
@@ -123,6 +129,13 @@ class ExportCSVView(APIView):
     def get(self, request):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
+        try:
+            start_date_parsed = parse_date(start_date)
+            end_date_parsed = parse_date(end_date)
+            if not start_date_parsed or not end_date_parsed:
+                raise ValidationError('Неверный формат даты.')
+        except ValidationError as e:
+            return Response({'detail:': str(e)}, status=status.HTTP_400_BAD_REQUEST)
         transactions = Transaction.objects.filter(
             user=request.user,
             date__range=[start_date, end_date]
@@ -194,62 +207,20 @@ class ExportPDFView(APIView):
 class TopExpenseCategoriesView(APIView):
     permission_classes = [IsAuthenticated]
 
-    @swagger_auto_schema(
-        operation_description="Получение топ категорий расходов за указанный период",
-        manual_parameters=[
-            openapi.Parameter(
-                "start_date",
-                openapi.IN_QUERY,
-                description="Дата начала периода (формат YYYY-MM-DD)",
-                type=openapi.TYPE_STRING,
-                required=True
-            ),
-            openapi.Parameter(
-                "end_date",
-                openapi.IN_QUERY,
-                description="Дата окончания периода (формат YYYY-MM-DD)",
-                type=openapi.TYPE_STRING,
-                required=True
-            ),
-            openapi.Parameter(
-                "limit",
-                openapi.IN_QUERY,
-                description="Количество категорий в топе (по умолчанию 5)",
-                type=openapi.TYPE_INTEGER,
-                required=False
-            ),
-        ],
-        responses={
-            200: openapi.Response(
-                description="Успешный ответ с топ категориями расходов",
-                examples={
-                    "application/json": {
-                        "period": {
-                            "start_date": "2024-12-01",
-                            "end_date": "2024-12-31"
-                        },
-                        "top_categories": [
-                            {"category__name": "Развлечения", "total_expense": 500.00},
-                            {"category__name": "Транспорт", "total_expense": 300.00},
-                            {"category__name": "Продукты", "total_expense": 200.00}
-                        ]
-                    }
-                }
-            ),
-            400: "Неверный формат даты или отсутствуют обязательные параметры",
-            401: "Пользователь не аутентифицирован",
-        }
-    )
+
+    @swagger_auto_schema(**TOP_EXPENSE_CATEGORIES_DOCS)
     def get(self, request):
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
-        # Кол-во категорий в топе. 5 по дефолту
-        limit = int(request.query_params.get('limit', 5))
+        limit = int(request.query_params.get('limit', 5))  # Количество категорий в топе, по умолчанию 5
+
         if not start_date or not end_date:
             return Response(
-                {'error': 'Пожалуйста, укажите start_date и end_date в формате YYYY-MM-DD'},
+                {"error": "Пожалуйста, укажите start_date и end_date в формате YYYY-MM-DD"},
                 status=400
             )
+
+
         try:
             transactions = Transaction.objects.filter(
                 user=request.user,
@@ -258,17 +229,69 @@ class TopExpenseCategoriesView(APIView):
                 date__date__lte=end_date
             )
         except ValueError:
-            return Response(
-                {'error': 'Неверный формат даты. Используйте YYYY-MM-DD.'},
-                status=400
-            )
+
+            return Response({"error": "Неверный формат даты. Используйте YYYY-MM-DD."}, status=400)
+
+        # Группировка и агрегация
 
         top_categories = (
             transactions.values('category__name')
             .annotate(total_expense=Sum('amount'))
             .order_by('-total_expense')[:limit]
         )
+
+
         return Response({
-            'period': {'start_date': start_date, 'end_date': end_date},
-            'top_categories': list(top_categories)
+            "period": {"start_date": start_date, "end_date": end_date},
+            "top_categories": list(top_categories)
         })
+
+
+class IncomeExpenseTrendView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(**INCOME_EXPENSE_TREND_DOCS)
+    def get(self, request):
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        group_by = request.query_params.get('group_by', 'day')
+
+        if not start_date or not end_date:
+            return Response(
+                {'error': 'Пожалуйста, укажите start_date и end_date в формате YYYY-MM-DD'}, status=400,
+            )
+        try:
+            group_by_field = {
+                'day': TruncDay('date'),
+                'week': TruncWeek('date'),
+                'month': TruncMonth('date'),
+            }[group_by]
+        except KeyError:
+            return Response({'error': 'Недопустимое значение group_by. Используйте day, week или month'},
+                            status=4000)
+        transactions = (
+            request.user.transactions.filter(date__date__gte=start_date, date__date__lte=end_date)
+            .annotate(period=group_by_field)
+            .values('period')
+            .annotate(
+                total_income=Sum('amount', filter=F('type') == 'income'),
+                total_expense=Sum('amount', filter=F('type') == 'expense'),
+            )
+            .order_by('period')
+        )
+        return Response(
+            {
+                "period": {"start_date": start_date, "end_date": end_date},
+                "trend": [
+                    {
+                        "date": item["period"],
+                        "total_income": item["total_income"] or 0,
+                        "total_expense": item["total_expense"] or 0,
+                    }
+                    for item in transactions
+                ],
+            }
+        )
+
+def income_expense_trend_chart(request):
+    return render(request, 'analytics/income_expense_trend.html')

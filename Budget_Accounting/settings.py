@@ -25,7 +25,7 @@ SECRET_KEY = 'django-insecure-1afr5)2%&tum+6u=q1v=ym0yr73&nlmy6l9lb4td3x-ku%!7kv
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '[::1]', '172.17.0.0/16']
 
 
 # Application definition
@@ -92,6 +92,7 @@ STATICFILES_DIRS = [
 ]
 
 STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 WSGI_APPLICATION = 'Budget_Accounting.wsgi.application'
 
@@ -101,14 +102,14 @@ WSGI_APPLICATION = 'Budget_Accounting.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('POSTGRES_DB', 'budget_accounting'),
+        'USER': os.getenv('POSTGRES_USER', 'postgres'), #egor
+        'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'postgres'), #abc123ABC
+        'HOST': os.getenv('DB_HOST', 'db'),  # Здесь используется "db"
+        'PORT': os.getenv('DB_PORT', '5432'),
     }
 }
-
-
-# Password validation
-# https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
 
 AUTH_PASSWORD_VALIDATORS = [
     {

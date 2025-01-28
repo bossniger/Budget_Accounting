@@ -1,23 +1,33 @@
+import csv
 from datetime import datetime
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+
 import django
 from django.db.models import Sum, Case, When, DecimalField
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from django.http import HttpResponse
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfgen import canvas
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import viewsets, status
+from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from .docs.budget_docs import BUDGET_LIST_RESPONSE, BUDGET_CREATE_EXAMPLE, BUDGET_CREATE_RESPONSE
 from .docs.category_docs import CATEGORY_FILTER_PARAMS, CATEGORY_LIST_RESPONSE, CATEGORY_CREATE_RESPONSE
+from .docs.loan_docs import make_payment_request, make_payment_response, settle_request, settle_response
 from .docs.transaction_docs import TRANSACTION_LIST_RESPONSES, TRANSACTION_LIST_PARAMETERS
 from .filters import TransactionFilter
-from .models import Transaction, Category, Tag, Budget
+from .models import Transaction, Category, Tag, Budget, Loan
 from .serializers import *
-from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
+from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly, AllowAny
 
 
 class TransactionViewSet(viewsets.ModelViewSet):
@@ -38,6 +48,82 @@ class TransactionViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         return Transaction.objects.filter(user=user)
+
+    @action(detail=False, methods=['get'])
+    def export_csv(self, request):
+        transactions = Transaction.objects.filter(user=request.user)
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = 'attachment; filename="transactions.csv"'
+        # Эта штука фиксит кириллицу
+        response.write('\ufeff'.encode('utf-8'))
+        writer = csv.writer(response)
+        writer.writerow(['Дата', 'Категория', 'Сумма', 'Тип', 'Описание'])
+        for transaction in transactions:
+            writer.writerow([
+                transaction.date,
+                transaction.category.name if transaction.category else '',
+                transaction.amount,
+                transaction.type,
+                transaction.description or ''
+            ])
+        return response
+
+    @action(detail=False, methods=['get'])
+    def export_pdf(self, request):
+        transactions = Transaction.objects.filter(user=request.user)
+        response = HttpResponse(content_type='application/pdf')
+        response['Content-Disposition'] = 'attachment; filename="transactions.pdf"'
+        pdfmetrics.registerFont(TTFont('DejaVuSans', 'static/fonts/DejaVuSans.ttf'))
+        pdf = canvas.Canvas(response, pagesize=letter)
+        pdf.setFont('DejaVuSans', 12)
+        pdf.drawString(100, 750, "Отчет по транзакциям")
+        pdf.drawString(50, 700, "Дата | Категория | Сумма | Тип | Описание")
+        y = 680
+        for transaction in transactions:
+            pdf.drawString(
+                50, y,
+                f"{transaction.date} | {transaction.category.name if transaction.category else ''} | "
+                f"{transaction.amount} | {transaction.type} | {transaction.description or ''}"
+            )
+            y -= 20
+            if y < 50:  # Переход на новую страницу
+                pdf.showPage()
+                pdf.setFont('DejaVuSans', 12)
+                y = 750
+
+        pdf.save()
+        return response
+
+    @action(detail=False, methods=['post'], parser_classes=[MultiPartParser])
+    def import_csv(self, request):
+        file = request.FILES.get('file')
+        if not file.name.endswith('.csv'):
+            return Response({'error': 'Загрузите файл в формате CSV.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            decoded_file = file.read().decode('utf-8')  # Декодируем файл
+            reader = csv.reader(decoded_file.splitlines())
+            next(reader)  # Пропускаем заголовок
+
+            for row in reader:
+                try:
+                    date, category_name, amount, type, description = row
+                    category = Category.objects.get(name=category_name, user=request.user)
+                    Transaction.objects.create(
+                        user=request.user,
+                        date=date,
+                        category=category,
+                        amount=Decimal(amount),
+                        type=type,
+                        description=description
+                    )
+                except Exception as e:
+                    return Response({'error': f'Ошибка в строке: {row}. {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
+            return Response({'message': 'Данные успешно импортированы!'}, status=status.HTTP_201_CREATED)
+        except UnicodeDecodeError:
+            return Response({'error': 'Проверьте, что файл сохранен в кодировке UTF-8.'},
+                            status=status.HTTP_400_BAD_REQUEST)
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -113,6 +199,69 @@ class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
+
+
+class RegisterView(APIView):
+    permission_classes = [AllowAny]
+    def post(self, request):
+        serializer = RegisterSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({'message': 'Пользователь успешно зарегистрирован'}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class AccountViewSet(viewsets.ModelViewSet):
+    queryset = Account.objects.all()
+    serializer_class = AccountSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Account.objects.filter(user=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def deposit(self, request, pk=None):
+        account = self.get_object()
+        amount = request.data.get('amount')
+        try:
+            amount = float(amount)
+            if amount <= 0:
+                return Response(
+                    {'error':'Сумма должна быть положительным числом'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            account.update_balance(amount)
+            return Response(
+                {'message': f'Баланс пополнен на {amount}. Текущий баланс: {account.balance}'},
+                status=status.HTTP_200_OK,
+            )
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'Укажите корректную сумму.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    @action(detail=True, methods=['post'])
+    def withdraw(self, request, pk=None):
+        account = self.get_object()
+        amount = request.data.get('amount')
+        try:
+            amount = float(amount)
+            if amount <= 0:
+                return Response(
+                    {'error': 'Сумма должна быть положительным числм'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if amount > account.balance:
+                return Response(
+                    {'message': f'Со счета снято {amount}. Текущий баланс {account.balance}'},
+                    status=status.HTTP_200_OK,
+                )
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'Укажите корректную сумму.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
 
 class TransferView(APIView):
@@ -244,8 +393,138 @@ class BudgetViewSet(viewsets.ModelViewSet):
         """
         return super().destroy(request, *args, **kwargs)
 
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
 
 class CurrencyViewSet(viewsets.ModelViewSet):
     queryset = Currency.objects.all()
     serializer_class = CurrencySerializer
     permission_classes = [IsAuthenticatedOrReadOnly]
+
+
+class LoanViewSet(viewsets.ModelViewSet):
+    queryset = Loan.objects.all()
+    serializer_class = LoanSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """
+        Возвращает только кредиты текущего пользователя.
+        """
+        return Loan.objects.filter(counterparty__user=self.request.user)
+
+    @swagger_auto_schema(
+        method='post',
+        operation_description='Внесение платежа для погашения части суммы кредита или займа.',
+        request_body=make_payment_request,
+        responses={200: make_payment_response},
+    )
+    @action(detail=True, methods=['post'])
+    def make_payment(self, request, pk=None):
+        """
+        Погашение части или полной суммы кредита.
+        """
+        loan = self.get_object()  # Получаем объект кредита
+        payment_amount = request.data.get('amount')
+
+        try:
+            payment_amount = Decimal(payment_amount)
+            if payment_amount <= 0:
+                return Response(
+                    {"error": "Сумма платежа должна быть положительным числом."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except (TypeError, ValueError, InvalidOperation):
+            return Response(
+                {"error": "Укажите корректную сумму платежа."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Проверяем, связан ли кредит с текущим пользователем
+        if not loan.account or loan.account.user != request.user:
+            return Response(
+                {"error": "Счет не найден или недоступен."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Проверяем достаточность средств на счете
+        if payment_amount > loan.account.balance:
+            return Response(
+                {"error": "Недостаточно средств на счете."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Погашение кредита
+        remaining_amount = loan.remaining_amount
+        if payment_amount >= remaining_amount:
+            loan.is_settled = True
+            loan.remaining_amount = Decimal(0)
+            loan.account.update_balance(-remaining_amount)
+            loan.save()
+            return Response(
+                {"message": f"Кредит полностью погашен. Списано: {remaining_amount}."},
+                status=status.HTTP_200_OK
+            )
+        else:
+            # Округление остатка
+            loan.remaining_amount = (loan.remaining_amount - payment_amount).quantize(Decimal('0.01'),
+                                                                                      rounding=ROUND_HALF_UP)
+            loan.account.update_balance(-payment_amount)
+            loan.save()
+            return Response(
+                {
+                    "message": f"Платеж в размере {payment_amount} успешно принят. Остаток долга: {loan.remaining_amount}."},
+                status=status.HTTP_200_OK
+            )
+
+    @swagger_auto_schema(
+        method='post',
+        operation_description='Полное погашение кредита или займа.',
+        request_body=settle_request,
+        responses={200: settle_response},
+    )
+    @action(detail=True, methods=['post'], url_path='settle')
+    def settle(self, request, pk=None):
+        loan = self.get_object()
+        account = loan.account
+
+        # Проверяем доступ к счету
+        if account.user != request.user:
+            return Response({"error": "Счет не найден или недоступен."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Получаем сумму для погашения
+        amount = request.data.get('amount')
+        if not amount or Decimal(amount) <= 0:
+            return Response({"error": "Некорректная сумма погашения."}, status=status.HTTP_400_BAD_REQUEST)
+
+        amount = Decimal(amount)
+
+        # Проверяем, можно ли погасить эту сумму
+        if amount > loan.remaining_amount:
+            return Response({"error": "Сумма превышает оставшуюся задолженность."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Обновляем оставшуюся сумму и статус кредита
+        loan.remaining_amount -= amount
+        if loan.remaining_amount <= 0:
+            loan.remaining_amount = Decimal('0.00')
+            loan.is_settled = True  # Обновляем статус на "погашено"
+
+        loan.save()
+
+        return Response({
+            "success": "Заем успешно погашен.",
+            "remaining_amount": loan.remaining_amount,
+            "is_settled": loan.is_settled
+        }, status=status.HTTP_200_OK)
+
+class CounterpartyViewSet(viewsets.ModelViewSet):
+    queryset = Counterparty.objects.all()
+    serializer_class = CounterpartySerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Counterparty.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)

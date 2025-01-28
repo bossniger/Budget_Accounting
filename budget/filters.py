@@ -1,5 +1,3 @@
-from random import choice
-
 import django_filters
 from budget.models import Transaction
 

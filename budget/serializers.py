@@ -1,8 +1,30 @@
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
-from .models import Transaction, Category, Tag, Account, Transfer, Budget, Currency
+from .models import Transaction, Category, Tag, Account, Transfer, Budget, Currency, Counterparty, Loan
 from django.contrib.auth.models import User
+
+
+class RegisterSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
+    password_confirm = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
+    class Meta:
+        model = User
+        fields = ['username', 'email', 'password', 'password_confirm']
+
+    def validate(self, attrs):
+        if attrs['password'] != attrs['password_confirm']:
+            raise serializers.ValidationError({'password:': 'Пароли не совпадают.'})
+        return attrs
+
+    def create(self, validated_data):
+        validated_data.pop('password_confirm') # убираем подтверждение пароля
+        user = User.objects.create_user(
+            username=validated_data['username'],
+            email=validated_data['email'],
+            password=validated_data['password']
+        )
+        return user
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -115,9 +137,20 @@ class TransferSerializer(serializers.ModelSerializer):
 
 
 class BudgetSerializer(serializers.ModelSerializer):
+    total_expenses = serializers.SerializerMethodField()
+    is_exceeded = serializers.SerializerMethodField()
+
     class Meta:
         model = Budget
         fields = '__all__'
+        read_only_fields = ['user', 'total_expenses', 'is_exceeded']
+
+    def get_is_exceeded(self, obj):
+        # Проверяем, превышен ли бюджет
+        return obj.is_exceeded()
+
+    def get_total_expenses(self, obj):
+        return str(obj.get_total_expenses())
 
     def validate(self, data):
         user = self.context['request'].user
@@ -130,4 +163,37 @@ class BudgetSerializer(serializers.ModelSerializer):
 
         if overlapping_budgets.exists():
             raise ValidationError("Бюджет на этот период для данной категории уже существует.")
+        return data
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+
+
+
+class CounterpartySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Counterparty
+        fields = '__all__'
+
+
+class LoanSerializer(serializers.ModelSerializer):
+    counterparty = serializers.PrimaryKeyRelatedField(queryset=Counterparty.objects.all())
+    currency = serializers.PrimaryKeyRelatedField(queryset=Currency.objects.all())
+    account = serializers.PrimaryKeyRelatedField(queryset=Account.objects.all())
+    class Meta:
+        model = Loan
+        fields = [
+            'id', 'loan_type', 'principal_amount', 'interest_rate',
+            'currency', 'account', 'date_issued', 'due_date',
+            'description', 'is_settled', 'remaining_amount', 'counterparty',
+        ]
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
+
+    def validate(self, data):
+        if data.get('due_date') and data['due_date'] < data['date_issued']:
+            raise serializers.ValidationError("Дата погашения не может быть раньше даты выдачи.")
         return data
