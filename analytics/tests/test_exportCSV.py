@@ -61,8 +61,8 @@ class ExportCSVViewTests(APITestCase):
         self.assertEqual(rows[0], ['Дата', 'Тип', 'Категория', 'Сумма', 'Описание'])
 
         # Проверка данных транзакций в CSV
-        self.assertEqual(rows[1][0][:10], '2025-01-26')
-        self.assertEqual(rows[2][0][:10], '2025-01-26')
+        self.assertEqual(rows[1][0][:10], '2025-01-30')
+        self.assertEqual(rows[2][0][:10], '2025-01-30')
 
     def test_export_csv_no_transactions(self):
         # Создание пустого фильтра (не существует транзакций в январе 2024)

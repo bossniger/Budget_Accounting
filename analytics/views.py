@@ -1,12 +1,12 @@
 import csv
 from io import BytesIO
 
-from django.db.models import Sum, Case, When, DecimalField, F
+from django.db.models import Sum, Case, When, DecimalField, F, Q, Value
 from django.db.models.functions import TruncDay, TruncWeek, TruncMonth
 from django.http import HttpResponse
 from django.shortcuts import render
 from django.utils.dateparse import parse_date
-from django.utils.timezone import localtime
+from django.utils.timezone import localtime, get_current_timezone, make_aware
 from django.views.generic import TemplateView
 from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
@@ -63,17 +63,18 @@ class AnalyticsView(APIView):
     def get(self, request):
         if not request.user.is_authenticated:
             raise AuthenticationFailed(detail='Not authenticated')
+
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
 
         if not start_date or not end_date:
             return Response(
-                {"error": "Пожалуйста, укажите start_date и end_date  формате YYYY-MM-DD"},
+                {"error": "Пожалуйста, укажите start_date и end_date формате YYYY-MM-DD"},
                 status=status.HTTP_400_BAD_REQUEST
             )
         try:
-            start_date = datetime.strptime(start_date, '%Y-%m-%d')
-            end_date = datetime.strptime(end_date, '%Y-%m-%d')
+            start_date = make_aware(datetime.strptime(start_date, '%Y-%m-%d'), timezone=get_current_timezone())
+            end_date = make_aware(datetime.strptime(end_date, '%Y-%m-%d'), timezone=get_current_timezone())
         except ValueError:
             return Response(
                 {"error": "Неверный формат даты. Используйте YYYY-MM-DD."},
@@ -82,10 +83,11 @@ class AnalyticsView(APIView):
 
         # Фильтрация транзакций по дате
         user = request.user
-        transactions = Transaction.objects.filter(user=user,
-                                                  date__date__gte=start_date,
-                                                  date__date__lte=end_date
-                                                  )
+        transactions = Transaction.objects.filter(
+            user=user,
+            date__gte=start_date,
+            date__lte=end_date
+        )
 
         # Агрегация данных
         analytics = transactions.values('category__name').annotate(
@@ -107,9 +109,7 @@ class AnalyticsView(APIView):
 
         # Итоговые суммы
         total_income = transactions.filter(type='income').aggregate(total=Sum('amount'))['total'] or 0
-        print(f"Total income calculated: {total_income}")
         total_expense = transactions.filter(type='expense').aggregate(total=Sum('amount'))['total'] or 0
-        print(f"Total expense calculated: {total_expense}")
 
         return Response({
             "period": {"start_date": start_date, "end_date": end_date},
@@ -256,9 +256,10 @@ class IncomeExpenseTrendView(APIView):
         end_date = request.query_params.get('end_date')
         group_by = request.query_params.get('group_by', 'day')
 
+        # Проверка на наличие start_date и end_date
         if not start_date or not end_date:
             return Response(
-                {'error': 'Пожалуйста, укажите start_date и end_date в формате YYYY-MM-DD'}, status=400,
+                {'error': 'Пожалуйста, укажите start_date и end_date в формате YYYY-MM-DD'}, status=400
             )
         try:
             group_by_field = {
@@ -267,18 +268,36 @@ class IncomeExpenseTrendView(APIView):
                 'month': TruncMonth('date'),
             }[group_by]
         except KeyError:
-            return Response({'error': 'Недопустимое значение group_by. Используйте day, week или month'},
-                            status=4000)
+            return Response({'error': 'Недопустимое значение group_by. Используйте day, week или month'}, status=400)
+
+        # Фильтрация транзакций
         transactions = (
-            request.user.transactions.filter(date__date__gte=start_date, date__date__lte=end_date)
+            request.user.transactions.filter(
+                date__date__gte=start_date,
+                date__date__lte=end_date
+            )
             .annotate(period=group_by_field)
             .values('period')
             .annotate(
-                total_income=Sum('amount', filter=F('type') == 'income'),
-                total_expense=Sum('amount', filter=F('type') == 'expense'),
+                total_income=Sum(
+                    Case(
+                        When(Q(type='income'), then='amount'),
+                        default=Value(0),
+                        output_field=DecimalField()
+                    )
+                ),
+                total_expense=Sum(
+                    Case(
+                        When(Q(type='expense'), then='amount'),
+                        default=Value(0),
+                        output_field=DecimalField()
+                    )
+                )
             )
             .order_by('period')
         )
+
+        # Формируем ответ
         return Response(
             {
                 "period": {"start_date": start_date, "end_date": end_date},

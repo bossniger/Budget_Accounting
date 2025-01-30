@@ -412,6 +412,7 @@ class LoanViewSet(viewsets.ModelViewSet):
         """
         Возвращает только кредиты текущего пользователя.
         """
+        print((f"Current user: {self.request.user}"))
         return Loan.objects.filter(counterparty__user=self.request.user)
 
     @swagger_auto_schema(
@@ -517,6 +518,45 @@ class LoanViewSet(viewsets.ModelViewSet):
             "remaining_amount": loan.remaining_amount,
             "is_settled": loan.is_settled
         }, status=status.HTTP_200_OK)
+
+    @swagger_auto_schema(
+        operation_description="Создать новый кредит.",
+        request_body=LoanSerializer,
+        responses={
+            201: openapi.Response(
+                description="Кредит успешно создан",
+                schema=LoanSerializer,
+            ),
+            400: openapi.Response(
+                description="Некорректные данные",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'field_name': openapi.Schema(
+                            type=openapi.TYPE_ARRAY,
+                            items=openapi.Schema(type=openapi.TYPE_STRING),
+                            example=["Это поле обязательно."],
+                        ),
+                    },
+                ),
+            ),
+            401: openapi.Response(
+                description="Не авторизован",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'detail': openapi.Schema(
+                            type=openapi.TYPE_STRING,
+                            example="Учетные данные не были предоставлены."
+                        ),
+                    },
+                ),
+            ),
+        },
+        security=[{"Bearer": []}],
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
 
 class CounterpartyViewSet(viewsets.ModelViewSet):
     queryset = Counterparty.objects.all()
