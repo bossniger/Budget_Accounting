@@ -103,10 +103,10 @@ WSGI_APPLICATION = 'Budget_Accounting.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('POSTGRES_DB', 'budget_accounting'),
+        'NAME': os.getenv('POSTGRES_DB', 'budget_accounting'), # 'budget_db'
         'USER': os.getenv('POSTGRES_USER', 'postgres'), #egor
         'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'postgres'), #abc123ABC
-        'HOST': os.getenv('DB_HOST', 'db'),  # Здесь используется "db"
+        'HOST': os.getenv('DB_HOST', 'db'),  # localhost
         'PORT': os.getenv('DB_PORT', '5432'),
     }
 }

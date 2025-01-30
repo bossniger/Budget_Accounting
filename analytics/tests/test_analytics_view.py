@@ -53,10 +53,11 @@ class AnalyticsViewTestCase(APITestCase):
         print("Created transactions:", list(Transaction.objects.all()))
 
     def test_successful_analytics(self):
-        response = self.client.get(self.url, {"start_date": "2024-12-01", "end_date": "2025-01-02"})
+        response = self.client.get(self.url, {"start_date": "2024-12-01", "end_date": "2025-01-31"})
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
         # Проверяем общие доходы и расходы
+        print(response.data)
         self.assertEqual(round(float(response.data["total_income"]), 2), 235.48)
         self.assertEqual(response.data["total_expense"], 103.0)
 
